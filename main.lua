@@ -1,15 +1,18 @@
 require "libs/Beetle"
 require "player"
+local Timer = require "libs/hump/timer"
 
 function love.load()
 	beetle.load()
 	beetle.setKey( "`" )
 
-	player = Player:new()
+	player = Player:new() -- just Player() works as well
 
 	beetle.add( "Player X", player.x )
 	beetle.add( "Player Y", player.y )
 	beetle.add( "Player Velocity", player.vel )
+	beetle.add( "Player Speed", player.speed )
+	beetle.add( "Player OSpeed", player.ospeed )
 
 	input = {
 		up = false,
@@ -52,12 +55,24 @@ function love.update( dt )
 	player.x = player.x + player.vel.x
 	player.y = player.y + player.vel.y
 
+	player.speed.y = player.ospeed.y
+
 	if player.x > love.graphics.getWidth() - (player.width * 0.5) then
 		player.x = love.graphics.getWidth() - (player.width * 0.5)
 		player.vel.x = 0
+		if player.y < love.graphics.getHeight() - (player.height * 0.5) then
+			-- player.speed.y = player.speed.y * 0.5
+			player.vel.y = player.vel.y * 0.5
+			player:resetCanDoubleJump()
+		end
 	elseif player.x < player.width * 0.5 then
 		player.x = player.width * 0.5
 		player.vel.x = 0
+		if player.y < love.graphics.getHeight() - (player.height * 0.5) then
+			-- player.speed.y = player.speed.y * 0.5
+			player.vel.y = player.vel.y * 0.5
+			player:resetCanDoubleJump()
+		end
 	end
 
 	if player.y > love.graphics.getHeight() - (player.height * 0.5) then
@@ -71,6 +86,10 @@ function love.update( dt )
 	beetle.update( "Player X", player.x )
 	beetle.update( "Player Y", player.y )
 	beetle.update( "Player Velocity", player.vel )
+	beetle.update( "Player Speed", player.speed )
+	beetle.update( "Player OSpeed", player.ospeed )
+
+	Timer.update( dt )
 end
 
 function love.draw()
@@ -84,8 +103,9 @@ function love.keypressed( key )
 	if key == "up" then
 		if player.y >= (love.graphics.getHeight() - (player.height * 0.5)) then
 			input.up = true
-		elseif not player.doubleJump then
+		elseif not player.doubleJump and player.canDoubleJump then
 			player.doubleJump = true
+			player.canDoubleJump = false
 			input.up = true
 		end
 	end
