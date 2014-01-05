@@ -1,6 +1,7 @@
 class = require "30log"
 Timer = require "libs/hump/timer"
 vector = require "libs/hump/vector"
+Camera = require "libs/hump/camera"
 require "libs/Beetle"
 require "displayobject"
 require "player"
@@ -9,11 +10,12 @@ function love.load()
 	beetle.load()
 	beetle.setKey( "`" )
 
+	center = vector( love.graphics.getWidth() * 0.5, love.graphics.getHeight() * 0.5 )
+
 	love.physics.setMeter( 64 )
-	world = love.physics.newWorld( 0, 9.81 * 64, true )
+	gravity = vector( 0, 9.81 * 64 )
+	world = love.physics.newWorld( gravity.x, gravity.y, true )
 	world:setCallbacks( beginContact, endContact, preSolve, postSolve )
-	local g = {}
-	g.x, g.y = world:getGravity()
 
 	persistingContacts = {
 		["Floor"] = 0,
@@ -22,8 +24,10 @@ function love.load()
 		["Wall Right"] = 0
 	}
 
-	player = Player:new( love.graphics.getWidth() * 0.5 - 25, love.graphics.getHeight() * 0.5 - 25, 50, 50 ) -- just Player() works as well
-	player.maxVel = vector( 300, -g.y )
+	player = Player:new( center.x - 25, center.y - 25, 50, 50 ) -- just Player() works as well
+	player.maxVel = vector( 500, -gravity.y )
+
+	cam = Camera( player:x(), player:y() )
 
 	local boundsSize = 10
 	bounds = {
@@ -72,32 +76,26 @@ function love.load()
 end
 
 function love.update( dt )
-	local g = {}
-	g.x, g.y = world:getGravity()
-
 	if input.left then
-		player.body:applyForce( -150, 0 )
+		player.body:applyForce( -player.maxVel.x, 0 )
 	end
 	if input.right then
-		player.body:applyForce( 150, 0 )
+		player.body:applyForce( player.maxVel.x, 0 )
 	end
 	if input.up then
 		if not player.jumping then
 			player.jumping = true
 			input.up = false
-			player.body:applyLinearImpulse( 0, -g.y * 0.33 )
-		else
-			if player.canDoubleJump then
-				player.canDoubleJump = false
-				player.doubleJump = true
-				player.body:applyLinearImpulse( 0, -g.y * 0.5 )
-			end
+			player.body:applyLinearImpulse( 0, -gravity.y * 0.33 )
+		elseif player.canDoubleJump then
+			player.canDoubleJump = false
+			player.doubleJump = true
+			player.body:applyLinearImpulse( 0, -gravity.y * 0.33 )
 		end
 	end
 	if input.down then
-		local powerY = bounds.bottom - player.height * 2.5
-		if player:y() < bounds.bottom - player.height * 2.5 then
-			player.body:applyLinearImpulse( 0, g.y )
+		if player:y() < bounds.bottom - player.height * 5 then
+			player.body:applyLinearImpulse( 0, gravity.y * 1.5 )
 			player.powerGroundHit = true
 			input.down = false
 		else
@@ -116,17 +114,25 @@ function love.update( dt )
 	beetle.update( "Player Y", player:y() )
 	beetle.update( "Player Velocity", player.vel )
 
+	--	e.g. 800 x 600
+	-- 800 - 400 = 400
+	-- 800 - 100 = 700
+	-- 800 - 
+	cam:lookAt( map( player:x(), 0, center.x * 2, center.x, center.x * 1.2 ), map( player:y(), 0, bounds.bottom - player.width, center.y - player.width, center.y * 1.05 ) )--math.max( lerp( cam.x, player:x(), dt ), 0 ), math.max( lerp( cam.y, player:y(), dt ), 0 ) )
 	Timer.update( dt )
 	world:update( dt )
 end
 
 function love.draw()
+	cam:attach()
+	-- if we've done a powerful ground hit, shake the screen by a randomized amount
 	if screenshake then
 		love.graphics.push()
-		local shakeAmt = math.random( -10, 10 )
+		local shakeAmt = math.random( -5, 5 )
 		love.graphics.translate( shakeAmt, shakeAmt )
 	end
-	love.graphics.setColor( 0, 0, 0 )
+
+	love.graphics.setColor( player.color.r, player.color.g, player.color.b, player.color.a )
 	love.graphics.polygon( "fill", player.body:getWorldPoints( player.shape:getPoints() ) )
 
 	love.graphics.setColor( 86, 0, 0 )
@@ -137,6 +143,7 @@ function love.draw()
 	if screenshake then
 		love.graphics.pop()
 	end
+	cam:detach()
 
 	beetle.draw()
 end
@@ -177,60 +184,60 @@ function map( val, omin, omax, nmin, nmax )
 	return nmin + (nmax - nmin) * ( (val - omin) / (omax - omin) )
 end
 
+function lerp( a, b, t )
+	return a+(b-a)*t
+end
+
 function beginContact( a, b, coll )
 	-- nothing
 end
 
 function endContact( a, b, coll )
 	local aud, bud = a:getUserData(), b:getUserData()
-	if aud == "Player" then
-		persistingContacts[ bud ] = 0
-	else
-		persistingContacts[ aud ] = 0
-	end
+	persistingContacts[ aud == "Player" and bud or aud ] = 0
 end
 
 function preSolve( a, b, coll )
 	local aud, bud = a:getUserData(), b:getUserData()
-	local n, ud
-	if aud == "Player" then
-		n = persistingContacts[ bud ]
-		ud = bud
-		persistingContacts[ bud ] = persistingContacts[ bud ] + 1
-	else
-		n = persistingContacts[ aud ]
-		ud = aud
-		persistingContacts[ aud ] = persistingContacts[ aud ] + 1
-	end
+	local ud = aud == "Player" and bud or aud
+	local n = persistingContacts[ ud ]
 
+	persistingContacts[ ud ] = n + 1
+
+	-- Only on the first hit
 	if n == 0 then
 		if ud == "Floor" then
-			player.jumping = false
-			player.doubleJump = false
-			player.canDoubleJump = false
-
 			if player.powerGroundHit then
-				player.powerGroundHit = false
 				screenshake = true
-				Timer.add( 0.5, function() screenshake = false end )
+				Timer.add( 0.5, function()
+					screenshake = false
+					player.powerGroundHit = false
+					-- Jump(s) reset will happen on next hit due to bounce
+				end )
+				player.color.r = 255
+				Timer.tween( 0.5, player.color, {r=0,g=0,b=0,a=255}, "elastic" )
 				if sfx.hit.groundHard then
 					sfx.hit.groundHard:play()
-				else
-					if sfx.hit.ground then
-						sfx.hit.ground:play()
-					end
+				elseif sfx.hit.ground then
+					sfx.hit.ground:play()
 				end
 			else
 				if sfx.hit.ground then
 					sfx.hit.ground:play()
 				end
+
+				player.jumping = false
+				player.doubleJump = false
+				player.canDoubleJump = false
 			end
-		else
-			if string.find( ud, "Wall" ) then
-				player.canDoubleJump = true
-				if sfx.hit.wall then
-					sfx.hit.wall:play()
-				end
+		elseif string.find( ud, "Wall" ) then
+			player.canDoubleJump = not player.doubleJump and true
+			if sfx.hit.wall then
+				sfx.hit.wall:play()
+			end
+		elseif ud == "Ceiling" then
+			if sfx.hit.wall then
+				sfx.hit.wall:play()
 			end
 		end
 	end

@@ -4,6 +4,7 @@ Player.__name = "Player"
 function Player:__init( _x, _y, _width, _height, _vel, _mxvel, _spd )
 	Player.super.__init( self, _x, _y, _width, _height, "dynamic", 1 )
 
+	self.fixture:setRestitution( 0.2 )
 	self:userData( "Player" )
 
 	self.vel = _vel and vector( _vel.x or 0, _vel.y or 0 ) or vector( 0, 0 )
@@ -19,6 +20,13 @@ function Player:__init( _x, _y, _width, _height, _vel, _mxvel, _spd )
 	self.powerGroundHit = false
 
 	self.resetCanDoubleJumpTimerHandler = nil
+
+	self.color = {
+		r = 0,
+		g = 0,
+		b = 0,
+		a = 255
+	}
 end
 
 local function __resetCanDoubleJump( instance )
