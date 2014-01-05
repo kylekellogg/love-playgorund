@@ -32,17 +32,19 @@ function love.load()
 	local boundsSize = 10
 	bounds = {
 		left = -boundsSize,
-		right = love.graphics.getWidth(),
+		right = love.graphics.getWidth() * 3,
 		top = -boundsSize,
 		bottom = love.graphics.getHeight() - player.height,
 		size = boundsSize
 	}
 
+	local w = bounds.right - bounds.left
+	local h = bounds.bottom - bounds.top
 	worldObjects = {
-		floor	= DisplayObject:new( bounds.left, bounds.bottom, bounds.right + bounds.size, bounds.size ),
-		ceiling	= DisplayObject:new( bounds.left, bounds.top, bounds.right + bounds.size, bounds.size ),
-		left	= DisplayObject:new( bounds.left, bounds.top + bounds.size, bounds.size, bounds.bottom + bounds.size ),
-		right	= DisplayObject:new( bounds.right, bounds.top + bounds.size, bounds.size, bounds.bottom + bounds.size )
+		floor	= DisplayObject:new( bounds.left, bounds.bottom, w + bounds.size, bounds.size ),
+		ceiling	= DisplayObject:new( bounds.left, bounds.top, w + bounds.size, bounds.size ),
+		left	= DisplayObject:new( bounds.left, bounds.top + bounds.size, bounds.size, h ),
+		right	= DisplayObject:new( bounds.right, bounds.top + bounds.size, bounds.size, h )
 	}
 
 	worldObjects.floor:userData( "Floor" )
@@ -118,7 +120,7 @@ function love.update( dt )
 	-- 800 - 400 = 400
 	-- 800 - 100 = 700
 	-- 800 - 
-	cam:lookAt( map( player:x(), 0, center.x * 2, center.x, center.x * 1.2 ), map( player:y(), 0, bounds.bottom - player.width, center.y - player.width, center.y * 1.05 ) )--math.max( lerp( cam.x, player:x(), dt ), 0 ), math.max( lerp( cam.y, player:y(), dt ), 0 ) )
+	cam:lookAt( map( player:x(), bounds.left, bounds.right, center.x, bounds.right * 0.65 ), map( player:y(), bounds.top, bounds.bottom - player.width, center.y - player.width, center.y * 1.05 ) )--math.max( lerp( cam.x, player:x(), dt ), 0 ), math.max( lerp( cam.y, player:y(), dt ), 0 ) )
 	Timer.update( dt )
 	world:update( dt )
 end
