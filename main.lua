@@ -11,11 +11,19 @@ function love.load()
 
 	love.physics.setMeter( 64 )
 	world = love.physics.newWorld( 0, 9.81 * 64, true )
+	world:setCallbacks( beginContact, endContact, preSolve, postSolve )
 	local g = {}
 	g.x, g.y = world:getGravity()
 
+	persistingContacts = {
+		["Floor"] = 0,
+		["Ceiling"] = 0,
+		["Wall Left"] = 0,
+		["Wall Right"] = 0
+	}
+
 	player = Player:new( love.graphics.getWidth() * 0.5 - 25, love.graphics.getHeight() * 0.5 - 25, 50, 50 ) -- just Player() works as well
-	player.maxVel = vector( 150, -g.y )
+	player.maxVel = vector( 300, -g.y )
 
 	local boundsSize = 10
 	bounds = {
@@ -27,11 +35,16 @@ function love.load()
 	}
 
 	worldObjects = {
-		floor	= DisplayObject:new( bounds.left, bounds.bottom, bounds.right - bounds.left, bounds.size ),
-		ceiling	= DisplayObject:new( bounds.left, -bounds.size, bounds.right - bounds.left, bounds.size ),
-		left	= DisplayObject:new( bounds.left, bounds.top, bounds.size, bounds.bottom - bounds.top ),
-		right	= DisplayObject:new( bounds.right, bounds.top, bounds.size, bounds.bottom - bounds.top )
+		floor	= DisplayObject:new( bounds.left, bounds.bottom, bounds.right + bounds.size, bounds.size ),
+		ceiling	= DisplayObject:new( bounds.left, bounds.top, bounds.right + bounds.size, bounds.size ),
+		left	= DisplayObject:new( bounds.left, bounds.top + bounds.size, bounds.size, bounds.bottom + bounds.size ),
+		right	= DisplayObject:new( bounds.right, bounds.top + bounds.size, bounds.size, bounds.bottom + bounds.size )
 	}
+
+	worldObjects.floor:userData( "Floor" )
+	worldObjects.ceiling:userData( "Ceiling" )
+	worldObjects.left:userData( "Wall Left" )
+	worldObjects.right:userData( "Wall Right" )
 
 	beetle.add( "Player X", player.body:getX() )
 	beetle.add( "Player Y", player.body:getY() )
@@ -71,13 +84,22 @@ function love.update( dt )
 	if input.up then
 		if not player.jumping then
 			player.jumping = true
+			input.up = false
 			player.body:applyLinearImpulse( 0, -g.y * 0.33 )
+		else
+			if player.canDoubleJump then
+				player.canDoubleJump = false
+				player.doubleJump = true
+				player.body:applyLinearImpulse( 0, -g.y * 0.5 )
+			end
 		end
 	end
 	if input.down then
-		if player:x() < bounds.bottom - player.height * 1.5 then
-			player.body:applyLinearImpulse( 0, g.y * 0.33 )
+		local powerY = bounds.bottom - player.height * 2.5
+		if player:y() < bounds.bottom - player.height * 2.5 then
+			player.body:applyLinearImpulse( 0, g.y )
 			player.powerGroundHit = true
+			input.down = false
 		else
 			player.body:applyForce( 0, 100 )
 		end
@@ -89,32 +111,6 @@ function love.update( dt )
 	player.vel.x = math.max( math.min( player.vel.x, player.maxVel.x ), -player.maxVel.x )
 	player.vel.y = math.max( player.vel.y, player.maxVel.y )
 	player.body:setLinearVelocity( player.vel:unpack() )
-
-	player.wasHittingWall = player.wasHittingWall and (player:x() <= bounds.left or player:x() >= bounds.right)
-	player.wasHittingGround = player.wasHittingGround and player:y() >= bounds.bottom
-
-	if player:x() >= bounds.right then
-		if input.right then
-			player:resetCanDoubleJump()
-		end
-		if not player.wasHittingWall then
-			player.wasHittingWall = true
-			if sfx.hit.wall then
-				sfx.hit.wall:play()
-			end
-		end
-	end
-	if player:x() <= bounds.left then
-		if input.left then
-			player:resetCanDoubleJump()
-		end
-		if not player.wasHittingWall then
-			player.wasHittingWall = true
-			if sfx.hit.wall then
-				sfx.hit.wall:play()
-			end
-		end
-	end
 
 	beetle.update( "Player X", player:x() )
 	beetle.update( "Player Y", player:y() )
@@ -179,4 +175,67 @@ end
 
 function map( val, omin, omax, nmin, nmax )
 	return nmin + (nmax - nmin) * ( (val - omin) / (omax - omin) )
+end
+
+function beginContact( a, b, coll )
+	-- nothing
+end
+
+function endContact( a, b, coll )
+	local aud, bud = a:getUserData(), b:getUserData()
+	if aud == "Player" then
+		persistingContacts[ bud ] = 0
+	else
+		persistingContacts[ aud ] = 0
+	end
+end
+
+function preSolve( a, b, coll )
+	local aud, bud = a:getUserData(), b:getUserData()
+	local n, ud
+	if aud == "Player" then
+		n = persistingContacts[ bud ]
+		ud = bud
+		persistingContacts[ bud ] = persistingContacts[ bud ] + 1
+	else
+		n = persistingContacts[ aud ]
+		ud = aud
+		persistingContacts[ aud ] = persistingContacts[ aud ] + 1
+	end
+
+	if n == 0 then
+		if ud == "Floor" then
+			player.jumping = false
+			player.doubleJump = false
+			player.canDoubleJump = false
+
+			if player.powerGroundHit then
+				player.powerGroundHit = false
+				screenshake = true
+				Timer.add( 0.5, function() screenshake = false end )
+				if sfx.hit.groundHard then
+					sfx.hit.groundHard:play()
+				else
+					if sfx.hit.ground then
+						sfx.hit.ground:play()
+					end
+				end
+			else
+				if sfx.hit.ground then
+					sfx.hit.ground:play()
+				end
+			end
+		else
+			if string.find( ud, "Wall" ) then
+				player.canDoubleJump = true
+				if sfx.hit.wall then
+					sfx.hit.wall:play()
+				end
+			end
+		end
+	end
+end
+
+function postSolve( a, b, coll )
+	-- nothing
 end

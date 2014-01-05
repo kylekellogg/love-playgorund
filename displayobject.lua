@@ -11,19 +11,28 @@ function DisplayObject:__init( _x, _y, _width, _height, _type, _mass )
 end
 
 function DisplayObject:x( val )
-	local x, y = self.body:getPosition()
+	local x, y = self.body:getWorldPoint( self.body:getPosition() )
 	if val then
 		x = tonumber( val )
-		self.body:setPosition( x, y )
+		self.body:setPosition( self.body:getWorldPoint( x, y ) )
 	end
 	return x
 end
 
 function DisplayObject:y( val )
-	local x, y = self.body:getPosition()
+	local x, y = self.body:getWorldPoint( self.body:getPosition() )
 	if val then
 		y = tonumber( val )
-		self.body:setPosition( x, y )
+		self.body:setPosition( self.body:getWorldPoint( x, y ) )
 	end
 	return y
+end
+
+function DisplayObject:userData( val )
+	local ud = self.fixture:getUserData()
+	if val then
+		ud = tostring( val )
+		self.fixture:setUserData( ud )
+	end
+	return ud
 end
