@@ -7,7 +7,7 @@ Programmed by substitute541
 
 beetle = {}
 
-local function indexOf( tbl, key )
+function table.indexOf( tbl, key )
 	tbl = tbl or {}
 
 	if key then
@@ -65,7 +65,7 @@ function beetle.add(name, contents)
 end
 
 function beetle.remove(name)
-	local idx = indexOf( dbg.names, name )
+	local idx = table.indexOf( dbg.names, name )
 
 	if idx then
 		table.remove(dbg.name, idx)
@@ -74,7 +74,7 @@ function beetle.remove(name)
 end
 
 function beetle.update(name, value)
-	local idx = indexOf( dbg.names, name ) or "nil"
+	local idx = table.indexOf( dbg.names, name ) or "nil"
 
 	if idx then
 		dbg.value[idx] = tostring(value)
