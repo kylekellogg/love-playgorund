@@ -1,18 +1,42 @@
+class = require "30log"
+Timer = require "libs/hump/timer"
+vector = require "libs/hump/vector"
 require "libs/Beetle"
+require "displayobject"
 require "player"
-local Timer = require "libs/hump/timer"
 
 function love.load()
 	beetle.load()
 	beetle.setKey( "`" )
 
-	player = Player:new() -- just Player() works as well
+	love.physics.setMeter( 64 )
+	world = love.physics.newWorld( 0, 9.81 * 64, true )
+	local g = {}
+	g.x, g.y = world:getGravity()
 
-	beetle.add( "Player X", player.x )
-	beetle.add( "Player Y", player.y )
+	player = Player:new( love.graphics.getWidth() * 0.5 - 25, love.graphics.getHeight() * 0.5 - 25, 50, 50 ) -- just Player() works as well
+	player.maxVel = vector( 150, -g.y )
+
+	local boundsSize = 10
+	bounds = {
+		left = -boundsSize,
+		right = love.graphics.getWidth(),
+		top = -boundsSize,
+		bottom = love.graphics.getHeight() - player.height,
+		size = boundsSize
+	}
+
+	worldObjects = {
+		floor	= DisplayObject:new( bounds.left, bounds.bottom, bounds.right - bounds.left, bounds.size ),
+		ceiling	= DisplayObject:new( bounds.left, -bounds.size, bounds.right - bounds.left, bounds.size ),
+		left	= DisplayObject:new( bounds.left, bounds.top, bounds.size, bounds.bottom - bounds.top ),
+		right	= DisplayObject:new( bounds.right, bounds.top, bounds.size, bounds.bottom - bounds.top )
+	}
+
+	beetle.add( "Player X", player.body:getX() )
+	beetle.add( "Player Y", player.body:getY() )
+	player.vel = vector( player.body:getLinearVelocity() )
 	beetle.add( "Player Velocity", player.vel )
-	beetle.add( "Player Speed", player.speed )
-	beetle.add( "Player OSpeed", player.ospeed )
 
 	input = {
 		up = false,
@@ -21,93 +45,109 @@ function love.load()
 		right = false
 	}
 
+	sfx = {
+		hit = {
+			ground		= love.audio.newSource( "assets/sounds/HitGround.wav", "static" ),
+			groundHard	= love.audio.newSource( "assets/sounds/HitGroundHard.wav", "static" ),
+			wall		= love.audio.newSource( "assets/sounds/HitWall.wav", "static" )
+		}
+	}
+
+	screenshake = false
+
 	love.graphics.setBackgroundColor( 255, 255, 255 )
 end
 
 function love.update( dt )
+	local g = {}
+	g.x, g.y = world:getGravity()
+
 	if input.left then
-		player.vel.x = player.vel.x - player.speed.x
+		player.body:applyForce( -150, 0 )
 	end
 	if input.right then
-		player.vel.x = player.vel.x + player.speed.x
+		player.body:applyForce( 150, 0 )
 	end
-
 	if input.up then
-		if player.jumpCounter < player.maxJumpCounter then
-			player.vel.y = math.max( player.vel.y + ((player.maxJumpCounter - player.jumpCounter) * -(player.speed.y * math.pi)), -player.maxVel.y )
-			player.jumpCounter = player.jumpCounter + 1
-		else
-			player.jumpCounter = 0
-			input.up = false
+		if not player.jumping then
+			player.jumping = true
+			player.body:applyLinearImpulse( 0, -g.y * 0.33 )
 		end
 	end
 	if input.down then
-		player.vel.y = player.vel.y + player.speed.y
-	end
-
-	if not input.up and player.y < love.graphics.getHeight() - (player.height * 0.5) then
-		player.vel.x = math.max( math.min( player.vel.x * 0.94, player.maxVel.x ), -player.maxVel.x )
-	else
-		player.vel.x = math.max( math.min( player.vel.x * 0.92, player.maxVel.x ), -player.maxVel.x )
-	end
-	player.vel.y = math.max( math.min( player.vel.y + 0.81, player.maxVel.y ), -player.maxVel.y )
-
-	player.x = player.x + player.vel.x
-	player.y = player.y + player.vel.y
-
-	player.speed.y = player.ospeed.y
-
-	if player.x > love.graphics.getWidth() - (player.width * 0.5) then
-		player.x = love.graphics.getWidth() - (player.width * 0.5)
-		player.vel.x = 0
-		if player.y < love.graphics.getHeight() - (player.height * 0.5) then
-			-- player.speed.y = player.speed.y * 0.5
-			player.vel.y = player.vel.y * 0.5
-			player:resetCanDoubleJump()
-		end
-	elseif player.x < player.width * 0.5 then
-		player.x = player.width * 0.5
-		player.vel.x = 0
-		if player.y < love.graphics.getHeight() - (player.height * 0.5) then
-			-- player.speed.y = player.speed.y * 0.5
-			player.vel.y = player.vel.y * 0.5
-			player:resetCanDoubleJump()
+		if player:x() < bounds.bottom - player.height * 1.5 then
+			player.body:applyLinearImpulse( 0, g.y * 0.33 )
+			player.powerGroundHit = true
+		else
+			player.body:applyForce( 0, 100 )
 		end
 	end
 
-	if player.y > love.graphics.getHeight() - (player.height * 0.5) then
-		player.y = love.graphics.getHeight() - (player.height * 0.5)
-		player.doubleJump = false
-	elseif player.y < player.height * 0.5 then
-		player.y = player.height * 0.5
-		player.vel.y = 0
+	-- Limit to maximum velocity
+	-- Only limit y on negative, leave positive alone for slam
+	player.vel = vector( player.body:getLinearVelocity() )
+	player.vel.x = math.max( math.min( player.vel.x, player.maxVel.x ), -player.maxVel.x )
+	player.vel.y = math.max( player.vel.y, player.maxVel.y )
+	player.body:setLinearVelocity( player.vel:unpack() )
+
+	player.wasHittingWall = player.wasHittingWall and (player:x() <= bounds.left or player:x() >= bounds.right)
+	player.wasHittingGround = player.wasHittingGround and player:y() >= bounds.bottom
+
+	if player:x() >= bounds.right then
+		if input.right then
+			player:resetCanDoubleJump()
+		end
+		if not player.wasHittingWall then
+			player.wasHittingWall = true
+			if sfx.hit.wall then
+				sfx.hit.wall:play()
+			end
+		end
+	end
+	if player:x() <= bounds.left then
+		if input.left then
+			player:resetCanDoubleJump()
+		end
+		if not player.wasHittingWall then
+			player.wasHittingWall = true
+			if sfx.hit.wall then
+				sfx.hit.wall:play()
+			end
+		end
 	end
 
-	beetle.update( "Player X", player.x )
-	beetle.update( "Player Y", player.y )
+	beetle.update( "Player X", player:x() )
+	beetle.update( "Player Y", player:y() )
 	beetle.update( "Player Velocity", player.vel )
-	beetle.update( "Player Speed", player.speed )
-	beetle.update( "Player OSpeed", player.ospeed )
 
 	Timer.update( dt )
+	world:update( dt )
 end
 
 function love.draw()
+	if screenshake then
+		love.graphics.push()
+		local shakeAmt = math.random( -10, 10 )
+		love.graphics.translate( shakeAmt, shakeAmt )
+	end
 	love.graphics.setColor( 0, 0, 0 )
-	love.graphics.rectangle( "fill", player.x - (player.width * 0.5), player.y - (player.height * 0.5), player.width, player.height )
+	love.graphics.polygon( "fill", player.body:getWorldPoints( player.shape:getPoints() ) )
+
+	love.graphics.setColor( 86, 0, 0 )
+	love.graphics.polygon( "fill", worldObjects.floor.body:getWorldPoints( worldObjects.floor.shape:getPoints() ) )
+	love.graphics.polygon( "fill", worldObjects.ceiling.body:getWorldPoints( worldObjects.ceiling.shape:getPoints() ) )
+	love.graphics.polygon( "fill", worldObjects.left.body:getWorldPoints( worldObjects.left.shape:getPoints() ) )
+	love.graphics.polygon( "fill", worldObjects.right.body:getWorldPoints( worldObjects.right.shape:getPoints() ) )
+	if screenshake then
+		love.graphics.pop()
+	end
 
 	beetle.draw()
 end
 
 function love.keypressed( key )
 	if key == "up" then
-		if player.y >= (love.graphics.getHeight() - (player.height * 0.5)) then
-			input.up = true
-		elseif not player.doubleJump and player.canDoubleJump then
-			player.doubleJump = true
-			player.canDoubleJump = false
-			input.up = true
-		end
+		input.up = true
 	end
 	if key == "down" then
 		input.down = true
