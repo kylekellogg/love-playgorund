@@ -93,13 +93,15 @@ function love.update( dt )
 			player.canDoubleJump = false
 			player.doubleJump = true
 			player.body:applyLinearImpulse( 0, -gravity.y * 0.33 )
+			player.canPowerGroundHit = true
 		end
 	end
 	if input.down then
-		if player:y() < bounds.bottom - player.height * 5 then
+		if player.canPowerGroundHit and player:y() < bounds.bottom - player.height * 5 then
 			player.body:applyLinearImpulse( 0, gravity.y * 1.5 )
 			player.powerGroundHit = true
 			input.down = false
+			player.canPowerGroundHit = false
 		else
 			player.body:applyForce( 0, 100 )
 		end

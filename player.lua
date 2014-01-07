@@ -18,6 +18,7 @@ function Player:__init( _x, _y, _width, _height, _vel, _mxvel, _spd )
 	self.canDoubleJump = false
 
 	self.powerGroundHit = false
+	self.canPowerGroundHit = false
 
 	self.resetCanDoubleJumpTimerHandler = nil
 
